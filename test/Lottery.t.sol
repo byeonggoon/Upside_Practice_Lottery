@@ -44,14 +44,14 @@ contract LotteryTest is Test {
 
     function testSellPhaseFullLength() public {
         lottery.buy{value: 0.1 ether}(0);
-        vm.warp(block.timestamp + 24 hours - 1);
+        vm.warp(block.timestamp + 24 hours - 1); // 24시간 -1초
         vm.prank(address(1));
         lottery.buy{value: 0.1 ether}(0);
     }
 
     function testNoBuyAfterPhaseEnd() public {
         lottery.buy{value: 0.1 ether}(0);
-        vm.warp(block.timestamp + 24 hours);
+        vm.warp(block.timestamp + 24 hours); // 24시간
         vm.expectRevert();
         vm.prank(address(1));
         lottery.buy{value: 0.1 ether}(0);
