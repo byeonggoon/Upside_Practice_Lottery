@@ -56,7 +56,6 @@ contract LotteryTest is Test {
         vm.prank(address(1));
         lottery.buy{value: 0.1 ether}(0);
     }
-    /**
 
     function testNoDrawDuringSellPhase() public {
         lottery.buy{value: 0.1 ether}(0);
@@ -65,6 +64,7 @@ contract LotteryTest is Test {
         lottery.draw();
     }
 
+    /**
     function testNoClaimDuringSellPhase() public {
         lottery.buy{value: 0.1 ether}(0);
         vm.warp(block.timestamp + 24 hours - 1);
@@ -84,7 +84,7 @@ contract LotteryTest is Test {
         vm.warp(block.timestamp + 24 hours);
         lottery.draw();
         uint16 winningNumber = lottery.winningNumber();
-        vm.revertTo(snapshotId);
+        vm.revertTo(snapshotId); // revertTo 스냅샷으로 롤백 
         return winningNumber;
     }
 
