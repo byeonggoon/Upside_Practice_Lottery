@@ -5,96 +5,134 @@ import "forge-std/console.sol";
 contract Lottery {
     /**
     Lottery
-    24시간동안 buy ,24시간동안 추첨 및 클레임 
-
-    function buy(number) 
-    같은 넘버는 24시간동안 유지. 24시간 지나면 ㅃ2
-    mapping(uint256[] => UserInfo) public user;
-    저 number
-
-    처음 24시간 buy 그다음 24시간 draw and claim 반복 
-
-    phase가 홀수 => BUY
-    phase가 짝수 => draw and claim 
-
-    처음 constructor 만들때 phase 1시작. 
-    그 이후로 buy하면 phase 1안에 계속 들어가고 .
-    같은 phase에서 같은 숫자 buy하면 revert 
-
-    constructor() {
-        phase[0] = block.timestamp + 24 hours;
-    }
-
-    if(block.timestamp > phase[0]){
-        phase[i+1] = phase[i] + 24 hours;
-    }
-
     
     buy처음하면 24 hour시작. 
-    그 이후 24 시간동안 draw, claim 안됨. 
-    draw하고나서 claim가능 
-    draw전에는 claim불가. 
-    claim까지 끝나고 다시 buy했을때  24 hour시작
+    
+    같은 index 24시간이내 같은 사람 => revert
+    같은 index 24시간이내 다른 사람 => ok
+    같은 index 24시간 지나고 draw안했는데 다른사람 같은 index => revert
+    24시간 안지났는데 draw => revert
+    24시간 안지났고 draw도 안했는데 claim => revert
+    24시간 지나고 draw => ok
+    winner아닌데 클레임 ? => 트랜잭션은 실행되는데 이더는 안보내줌     
+    24시간 지나고 draw하고 claim => ok
+    24시간 지나고 draw하고 claim하고 바로 buy안햇는데 draw => revert
+    같은 사람 buy하고 24시간 지나고 draw하고 claim하고 다시 반복 => ok
+    다른 사람이 같은 인덱스 buy하고 24시간 지나고 draw => 각각 클레임 가능 
      */
 
     constructor() {
-        phase[0] = block.timestamp + 24 hours;
-        initialtime = block.timestamp;
+        phaseTimeLimit = block.timestamp + 24 hours;
     }
 
-    struct UserInfo {
-        address user;
-        uint256 timelimit;
-    }
+    uint256 public phaseTimeLimit;
+    uint256 public luckyVikcyNum;
+    bool public buyPhase;
+    bool public drawPhase;
+    bool public claimPhase;
+    mapping(uint256 => address[]) public buyUserlist;
+    uint256[] public usedBettingNums;
 
-    uint256 public initialtime;
-    UserInfo[] public buyNum;
-    mapping(uint256 => uint256) public phase;
+    uint256 public totalRewards;
 
-    function nowPhase(uint256 blocktimestamp) public view returns (uint256) {
-        return (blocktimestamp - initialtime) / 86400;
-    }
-
-    function buyPhaseChecker(
-        uint256 blocktimestamp
-    ) public view returns (bool) {
-        return nowPhase(blocktimestamp) % 2 == 1;
-    }
-
-    function buy(uint256 _index) external payable {
+    function buy(uint256 _bettingNum) external payable {
         require(msg.value >= 0.1 ether && msg.value % (0.1 ether) == 0);
 
-        console.log("phase[0]", phase[0]);
-
-        // console.log("222", buyPhaseChecker(block.timestamp));
-        console.log("noew", nowPhase(block.timestamp));
-
-        if (block.timestamp > phase[0]) {
-            phase[1] = phase[0] + 24 hours;
+        if (
+            (buyPhase == false && drawPhase == false && claimPhase == true) ||
+            ((buyPhase == true && drawPhase == true && claimPhase == false) &&
+                block.timestamp >= phaseTimeLimit)
+        ) {
+            phaseTimeLimit = block.timestamp + 24 hours;
         }
-        //
-        buyNum.push();
 
-        if (buyNum[_index].user != address(0)) {
-            require(block.timestamp < buyNum[_index].timelimit);
-            require(buyNum[_index].user != msg.sender);
+        require(block.timestamp < phaseTimeLimit, "INNIN limit");
+
+        if (
+            buyUserlist[_bettingNum].length > 0 &&
+            buyUserlist[_bettingNum][0] != address(0)
+        ) {
+            for (uint256 i = 0; i < buyUserlist[_bettingNum].length; i++) {
+                require(
+                    buyUserlist[_bettingNum][i] != msg.sender,
+                    "NOT MATCHED"
+                );
+            }
         }
-        buyNum[_index].user = msg.sender;
-        buyNum[_index].timelimit = block.timestamp + 24 hours;
+
+        buyUserlist[_bettingNum].push(msg.sender);
+        usedBettingNums.push(_bettingNum);
+
+        buyPhase = true;
+        drawPhase = false;
+        claimPhase = false;
     }
 
     function draw() external {
-        for (uint256 i; i < buyNum.length; i++) {
-            require(block.timestamp < buyNum[i].timelimit);
+        require(block.timestamp >= phaseTimeLimit);
+        require(buyPhase, "not yes buyPhase");
+        luckyVikcyNum = 0;
+
+        buyPhase = true;
+        drawPhase = true;
+        claimPhase = false;
+        totalRewards = address(this).balance;
+    }
+
+    function winningNumber() public returns (uint16) {
+        /** 
+         지금은 테스트를 위해 무작위 값이 아닌 고정된 값을 리턴. 
+        */
+        return 0;
+    }
+
+    function claim() external {
+        require(block.timestamp >= phaseTimeLimit);
+        require(buyPhase && drawPhase, "not yet claimPhase");
+
+        if (
+            buyUserlist[winningNumber()].length > 0 &&
+            isSenderInUsedBettingList()
+        ) {
+            uint256 rewardUserCount = buyUserlist[winningNumber()].length;
+            uint256 eachReward = totalRewards / rewardUserCount;
+            uint256 rewardCount;
+
+            for (uint256 i; i < rewardUserCount; i++) {
+                if ((buyUserlist[winningNumber()][i] == msg.sender)) {
+                    (bool success, ) = payable(msg.sender).call{
+                        value: eachReward
+                    }("");
+                    require(success);
+                    rewardCount++;
+                }
+            }
+            if (rewardCount == rewardUserCount) {
+                buyPhase = false;
+                drawPhase = false;
+                claimPhase = true;
+                clearBuyUserlist();
+            }
         }
     }
 
-    /**
-    24시간동안 buy에 입력된 값들중에서 랜덤으로 뽑기. 
-     */
-    function winningNumber() external {}
-
-    function claim() external {}
-
+    function clearBuyUserlist() public {
+        for (uint256 i = 0; i < usedBettingNums.length; i++) {
+            uint256 usedBettingNum = usedBettingNums[i];
+            delete buyUserlist[usedBettingNum];
+            uint256 lengthAfter = buyUserlist[usedBettingNum].length;
+            require(lengthAfter == 0, "Deletion failed");
+        }
+        delete usedBettingNums;
+    }
+    function isSenderInUsedBettingList() internal view returns (bool) {
+        uint256 len = buyUserlist[usedBettingNums[0]].length;
+        for (uint256 i = 0; i < len; i++) {
+            if (buyUserlist[usedBettingNums[0]][i] == msg.sender) {
+                return true;
+            }
+        }
+        return false;
+    }
     receive() external payable {}
 }
