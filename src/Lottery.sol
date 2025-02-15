@@ -23,6 +23,7 @@ contract Lottery {
 
     constructor() {
         phaseTimeLimit = block.timestamp + 24 hours;
+        owner = msg.sender;
     }
 
     uint256 public phaseTimeLimit;
@@ -32,11 +33,12 @@ contract Lottery {
     bool public claimPhase;
     mapping(uint256 => address[]) public buyUserlist;
     uint256[] public usedBettingNums;
-
     uint256 public totalRewards;
+    uint256 public rewardPerWinner;
+    address public owner;
 
     function buy(uint256 _bettingNum) external payable {
-        require(msg.value >= 0.1 ether && msg.value % (0.1 ether) == 0);
+        require(msg.value == 0.1 ether);
 
         if (
             (buyPhase == false && drawPhase == false && claimPhase == true) ||
@@ -46,7 +48,7 @@ contract Lottery {
             phaseTimeLimit = block.timestamp + 24 hours;
         }
 
-        require(block.timestamp < phaseTimeLimit, "INNIN limit");
+        require(block.timestamp < phaseTimeLimit, "END PHASE WAIT NEXT PHASE");
 
         if (
             buyUserlist[_bettingNum].length > 0 &&
@@ -71,7 +73,8 @@ contract Lottery {
     function draw() external {
         require(block.timestamp >= phaseTimeLimit);
         require(buyPhase, "not yes buyPhase");
-        luckyVikcyNum = 0;
+        require(owner == msg.sender);
+        luckyVikcyNum = winningNumber();
 
         buyPhase = true;
         drawPhase = true;
@@ -90,49 +93,41 @@ contract Lottery {
         require(block.timestamp >= phaseTimeLimit);
         require(buyPhase && drawPhase, "not yet claimPhase");
 
-        if (
-            buyUserlist[winningNumber()].length > 0 &&
-            isSenderInUsedBettingList()
-        ) {
-            uint256 rewardUserCount = buyUserlist[winningNumber()].length;
-            uint256 eachReward = totalRewards / rewardUserCount;
-            uint256 rewardCount;
+        address[] storage winners = buyUserlist[luckyVikcyNum];
 
-            for (uint256 i; i < rewardUserCount; i++) {
-                if ((buyUserlist[winningNumber()][i] == msg.sender)) {
-                    (bool success, ) = payable(msg.sender).call{
-                        value: eachReward
-                    }("");
-                    require(success);
-                    rewardCount++;
-                }
-            }
-            if (rewardCount == rewardUserCount) {
-                buyPhase = false;
-                drawPhase = false;
-                claimPhase = true;
-                clearBuyUserlist();
+        if (winners.length == 0) {
+            return;
+        }
+
+        uint256 rewardUserCount = winners.length;
+        uint256 eachReward = totalRewards / rewardUserCount;
+
+        for (uint256 i; i < rewardUserCount; i++) {
+            if ((winners[i] == msg.sender)) {
+                winners[i] = winners[winners.length - 1];
+                winners.pop();
+                break;
             }
         }
+
+        if (winners.length == 0) {
+            buyPhase = false;
+            drawPhase = false;
+            claimPhase = true;
+            clearBuyUserlist();
+        }
+        totalRewards -= eachReward;
+        (bool success, ) = payable(msg.sender).call{value: eachReward}("");
+        require(success);
     }
 
     function clearBuyUserlist() public {
         for (uint256 i = 0; i < usedBettingNums.length; i++) {
-            uint256 usedBettingNum = usedBettingNums[i];
-            delete buyUserlist[usedBettingNum];
-            uint256 lengthAfter = buyUserlist[usedBettingNum].length;
-            require(lengthAfter == 0, "Deletion failed");
+            uint256 num = usedBettingNums[i];
+            delete buyUserlist[num];
         }
         delete usedBettingNums;
     }
-    function isSenderInUsedBettingList() internal view returns (bool) {
-        uint256 len = buyUserlist[usedBettingNums[0]].length;
-        for (uint256 i = 0; i < len; i++) {
-            if (buyUserlist[usedBettingNums[0]][i] == msg.sender) {
-                return true;
-            }
-        }
-        return false;
-    }
+
     receive() external payable {}
 }

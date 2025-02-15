@@ -132,7 +132,6 @@ contract LotteryTest is Test {
         vm.warp(block.timestamp + 24 hours);
         lottery.draw();
         lottery.claim(); // => 여기서 리워드를 안받아야함.
-
         winningNumber = getNextWinningNumber();
         lottery.buy{value: 0.1 ether}(winningNumber);
         vm.warp(block.timestamp + 24 hours);
@@ -148,13 +147,10 @@ contract LotteryTest is Test {
         vm.prank(address(1));
         lottery.buy{value: 0.1 ether}(winningNumber);
         vm.deal(address(1), 0);
-
         vm.warp(block.timestamp + 24 hours);
         lottery.draw();
-
         lottery.claim();
         assertEq(received_msg_value, 0.1 ether);
-
         vm.prank(address(1));
         lottery.claim();
         assertEq(address(1).balance, 0.1 ether);
